@@ -3,11 +3,31 @@ import pandas as pd
 import numpy as np
 
 #%%
-def getAdditiveMatrix(calf, sire, dam):
-    n = int(max(*calf, *sire, *dam)) + 1 # does not take nan (np.nan takes nan)
+def getAdditiveMatrix(calve, sire, dam, fill_none=False, sire_ind=None, dam_ind=None):
+    n = int(max(*calve, *sire, *dam)) + 1 # does not take nan (np.nan takes nan)
+
+    if fill_none:
+        set_calve = set(calve)
+        calve_add = []
+        sire_add = []
+        dam_add = []
+        
+        for i in range(n):
+            if i not in set_calve and i != sire_ind and i != dam_ind:
+                calve_add.append(i)
+                sire_add.append(sire_ind)
+                dam_add.append(dam_ind)
+
+        calve = np.block([np.asarray(calve_add), calve])
+        sire = np.block([np.asarray(sire_add), sire])
+        dam = np.block([np.asarray(dam_add), dam])
+
+    # print(calve)
+    # print(sire)
+    # print(dam)
 
     answer = np.zeros(shape=(n, n))
-    name_to_ind = {calf[i]: i for i in range(len(calf))}
+    name_to_ind = {calve[i]: i for i in range(len(calve))}
 
     for i in range(n):
 
@@ -30,20 +50,22 @@ def getAdditiveMatrix(calf, sire, dam):
             answer[i][i] = 1
 
         else:
-            
             for j in range(i):
                 answer[i][j] = 0.5 * (answer[j][int(sire[name_to_ind[i]])] + answer[j][int(dam[name_to_ind[i]])])
                 answer[j][i] = answer[i][j]
 
             answer[i][i] = 1 + 0.5 * answer[int(sire[name_to_ind[i]])][int(dam[name_to_ind[i]])]
 
+
+    # print(answer)
     return answer
 
-def getZMatrix(observations):
+def getZMatrix(observations, maximum=None):
+    if maximum is None:
+        maximum = np.max(observations) + 1
 
-    max = np.max(observations) + 1
     length = len(observations)
-    answer = np.zeros(shape=(length, max))
+    answer = np.zeros(shape=(length, maximum))
 
     for i in range(len(observations)):
         answer[i][observations[i]] = 1
@@ -51,8 +73,8 @@ def getZMatrix(observations):
     return answer
 
 class AnimalModel:
-    def __init__(self, data, name_x, name_y, name_calf, name_sire, name_dam, alpha):
-        names = set(pd.concat([data[name_calf].dropna(), data[name_sire].dropna(), data[name_dam].dropna()]))
+    def __init__(self, data, name_x, name_y, name_calve, name_sire, name_dam, alpha):
+        names = set(pd.concat([data[name_calve].dropna(), data[name_sire].dropna(), data[name_dam].dropna()]))
 
         if 'None' in names:
             names.remove('None')
@@ -65,7 +87,7 @@ class AnimalModel:
 
         self.name_to_ind['None'] = np.nan
 
-        self.calf = data[name_calf].apply(lambda name: self.name_to_ind[name])
+        self.calve = data[name_calve].apply(lambda name: self.name_to_ind[name])
         self.sire = data[name_sire].apply(lambda name: self.name_to_ind[name])
         self.dam = data[name_dam].apply(lambda name: self.name_to_ind[name])
 
@@ -75,8 +97,8 @@ class AnimalModel:
 
         self.y = data[name_y].to_numpy()
 
-        self.A = getAdditiveMatrix(self.calf, self.sire, self.dam)
-        self.Z = getZMatrix(self.calf)
+        self.A = getAdditiveMatrix(self.calve, self.sire, self.dam)
+        self.Z = getZMatrix(self.calve)
 
         self.alpha = alpha
 
@@ -149,8 +171,8 @@ def getWmatrix(calve, sire, dam):
 
 
 class ReducedAnimalModel:
-    def __init__(self, data, name_x, name_y, name_calf, name_sire, name_dam, sigma_e, sigma_a):
-        names = set(pd.concat([data[name_calf].dropna(), data[name_sire].dropna(), data[name_dam].dropna()]))
+    def __init__(self, data, name_x, name_y, name_calve, name_sire, name_dam, sigma_e, sigma_a):
+        names = set(pd.concat([data[name_calve].dropna(), data[name_sire].dropna(), data[name_dam].dropna()]))
 
         if 'None' in names:
             names.remove('None')
@@ -162,15 +184,15 @@ class ReducedAnimalModel:
 
         self.name_to_ind['None'] = np.nan
 
-        self.calf = data[name_calf].apply(lambda name: self.name_to_ind[name])
+        self.calve = data[name_calve].apply(lambda name: self.name_to_ind[name])
         self.sire = data[name_sire].apply(lambda name: self.name_to_ind[name])
         self.dam = data[name_dam].apply(lambda name: self.name_to_ind[name])
 
         set_sire = set(data[name_sire])
         set_dam = set(data[name_dam])
-        indexes = data[name_calf].apply(lambda x: x in set_sire or x in set_dam)
+        indexes = data[name_calve].apply(lambda x: x in set_sire or x in set_dam)
 
-        self.A = getAdditiveMatrix(self.calf[indexes], self.sire[indexes], self.dam[indexes])
+        self.A = getAdditiveMatrix(self.calve[indexes], self.sire[indexes], self.dam[indexes])
 
         self.ind_to_name = {i: name for i, name in zip(range(len(names)), names) if name in set_sire or name in set_dam}
 
@@ -181,8 +203,8 @@ class ReducedAnimalModel:
 
         self.y = data[name_y].to_numpy()
 
-        self.R = getRmatrix(self.calf, self.sire, self.dam, sigma_e, sigma_a)
-        self.W = getWmatrix(self.calf, self.sire, self.dam)
+        self.R = getRmatrix(self.calve, self.sire, self.dam, sigma_e, sigma_a)
+        self.W = getWmatrix(self.calve, self.sire, self.dam)
 
 
         self.sigma_e = sigma_a
@@ -257,12 +279,14 @@ if __name__ == '__main__':
 # %%
 
 class GroupAnimalModel:
-    def __init__(self, data, name_x, name_y, name_calf, name_sire, name_dam, alpha):
+    def __init__(self, data, name_x, name_y, name_calve, name_sire, name_dam, alpha):
         data = data.copy()
-        data[name_sire][data[name_sire] == 'None'] = 'Group1'
-        data[name_dam][data[name_dam] == 'None'] = 'Group2'
+        data[name_sire] = data[name_sire].replace('None', 'Group1')
+        data[name_dam] = data[name_dam].replace('None', 'Group2')
 
-        names = set(pd.concat([data[name_calf].dropna(), data[name_sire].dropna(), data[name_dam].dropna()]))
+        names = set(pd.concat([data[name_calve].dropna(), data[name_sire].dropna(), data[name_dam].dropna()]))
+        names.add('Group1')
+        names.add('Group2')
 
         names = list(names)
         names.sort() #for easier reading
@@ -270,7 +294,8 @@ class GroupAnimalModel:
         self.name_to_ind = {name: i for i, name in zip(range(len(names)), names)}
         self.ind_to_name = {i: name for i, name in zip(range(len(names)), names)}
 
-        self.calf = data[name_calf].apply(lambda name: self.name_to_ind[name])
+
+        self.calve = data[name_calve].apply(lambda name: self.name_to_ind[name])
         self.sire = data[name_sire].apply(lambda name: self.name_to_ind[name])
         self.dam = data[name_dam].apply(lambda name: self.name_to_ind[name])
 
@@ -280,8 +305,10 @@ class GroupAnimalModel:
 
         self.y = data[name_y].to_numpy()
 
-        self.A = getAdditiveMatrix(self.calf, self.sire, self.dam)
-        self.Z = getZMatrix(self.calf)
+        self.A = getAdditiveMatrix(self.calve, self.sire, self.dam, \
+            fill_none=True, sire_ind=self.name_to_ind['Group1'], dam_ind=self.name_to_ind['Group2'])
+
+        self.Z = getZMatrix(self.calve, maximum=len(names))
 
         self.alpha = alpha
 
@@ -298,6 +325,8 @@ class GroupAnimalModel:
 
         MME = np.block([[X_tX, X_tZ],
                         [Z_tX, Z_tZ + self.alpha * np.linalg.inv(self.A)]])
+        
+        print(np.linalg.inv(self.A))
 
         X_ty = X_t @ self.y
         Z_ty = Z_t @ self.y
@@ -315,17 +344,20 @@ class GroupAnimalModel:
         for i in self.ind_to_name:
             print(self.ind_to_name[i], self.a[i])
 
+
 # %%
-# table = pd.DataFrame([["4", 'Male', "1", "None", 4.5],\
-#                     ["5", 'Female', "3", "2", 2.9],\
-#                     ["6", 'Female', "1", "2", 3.9],\
-#                     ["7", 'Male', "4", "5", 3.5],
-#                     ["8", 'Male', "3", "6", 5.0]], 
-#                     columns=['Calves', 'Sex', 'Sire', 'Dam', 'WWG'])
+table = pd.DataFrame([["4", 'Male', "1", "None", 4.5],\
+                    ["5", 'Female', "3", "2", 2.9],\
+                    ["6", 'Female', "1", "2", 3.9],\
+                    ["7", 'Male', "4", "5", 3.5],
+                    ["8", 'Male', "3", "6", 5.0]], 
+                    columns=['Calves', 'Sex', 'Sire', 'Dam', 'WWG'])
 
-# animal = GroupAnimalModel(table, 'Sex', 'WWG', 'Calves', 'Sire', 'Dam', 2)
-# animal.calculate()
-# animal.print_results()
+animal = GroupAnimalModel(table, 'Sex', 'WWG', 'Calves', 'Sire', 'Dam', 2)
+animal.calculate()
+animal.print_results()
 
+
+# %%
 
 # %%
